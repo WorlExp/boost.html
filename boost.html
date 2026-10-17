@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Discord Boost Basıcı</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #1e1f22; color: #dbdee1; font-family: system-ui, sans-serif;
+  }
+  .card {
+    width: min(520px, 92vw); background: #2b2d31; padding: 28px;
+    border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  }
+  h1 { margin: 0 0 6px; font-size: 20px; color: #fff; }
+  p.sub { margin: 0 0 20px; font-size: 13px; color: #949ba4; }
+  label { display: block; font-size: 12px; margin: 14px 0 6px; color: #b5bac1; }
+  input {
+    width: 100%; padding: 11px 13px; border-radius: 8px; border: 1px solid #1e1f22;
+    background: #1e1f22; color: #fff; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: #5865f2; }
+  button {
+    width: 100%; margin-top: 18px; padding: 12px; border: 0; border-radius: 8px;
+    background: #5865f2; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: #4752c4; }
+  button:disabled { opacity: .6; cursor: default; }
+  #log {
+    margin-top: 18px; background: #1e1f22; border-radius: 8px; padding: 12px;
+    font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap;
+    min-height: 40px; color: #b5bac1;
+  }
+  .ok { color: #3ba55d; } .err { color: #ed4245; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Discord Boost Basıcı</h1>
+    <p class="sub">Token ve sunucu ID gir, boş boost slotlarını bas.</p>
+
+    <label>Hesap Token</label>
+    <input id="token" placeholder="MTEx... (user token, 'Bot ' öneki yok)">
+
+    <label>Sunucu ID</label>
+    <input id="guild" placeholder="123456789012345678">
+
+    <button id="go">Boost Bas</button>
+    <div id="log">Hazır.</div>
+  </div>
+
+<script>
+const API = "https://discord.com/api/v10";
+
+async function api(path, token, method = "GET", body) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { Authorization: token, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${await res.text()}`);
+  return res.status === 204 ? null : res.json();
+}
+
+const logEl = document.getElementById("log");
+const log = (msg, cls = "") =>
+  logEl.innerHTML += `<span class="${cls}">${msg}</span>\n`;
+
+document.getElementById("go").onclick = async () => {
+  const btn = document.getElementById("go");
+  const token = document.getElementById("token").value.trim();
+  const guild = document.getElementById("guild").value.trim();
+  logEl.innerHTML = "";
+
+  if (!token || !guild) return log("Token ve sunucu ID zorunlu.", "err");
+  btn.disabled = true;
+
+  try {
+    // 1) Token doğrula
+    const me = await api("/users/@me", token);
+    log(`Giriş OK → ${me.username} (${me.id})`, "ok");
+
+    // 2) Sunucu üyeliğini kontrol et
+    await api(`/guilds/${guild}`, token);
+    log("Sunucu bulundu, üyelik var.", "ok");
+
+    // 3) Boş boost slotlarını al
+    const slots = await api("/users/@me/guilds/premium/subscription-slots", token);
+    const free = slots.filter(s => !s.premium_guild_subscription);
+    log(`Toplam slot: ${slots.length} | Boş slot: ${free.length}`);
+
+    if (!free.length) return log("Boş boost slotu yok.", "err");
+
+    // 4) Hepsini tek istekte bas
+    const ids = free.map(s => s.id);
+    const applied = await api(`/guilds/${guild}/premium/subscriptions`, token, "PUT", {
+      user_premium_guild_subscription_slot_ids: ids,
+    });
+    log(`${applied.length} boost basıldı! 🚀`, "ok");
+    applied.forEach(s => log(`  • slot ${s.id} → ${s.premium_guild_subscription?.guild_id}`));
+  } catch (e) {
+    log("Hata: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
